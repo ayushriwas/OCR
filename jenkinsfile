@@ -1,0 +1,119 @@
+// Jenkinsfile for Image to Text Converter Flask App
+
+pipeline {
+    agent any // Specifies that the pipeline can run on any available agent
+
+    // Environment variables (replace with your actual values or Jenkins credentials)
+    environment {
+        // Replace with your Docker registry URL (e.g., your-docker-hub-username)
+        // For AWS ECR, it would be like: 123456789012.dkr.ecr.your-region.amazonaws.com
+        DOCKER_REGISTRY = 'ayush5626'
+        // Replace with your Docker image name
+        DOCKER_IMAGE_NAME = 'image-to-text-converter-app'
+        // Jenkins credential ID for Docker Hub login (configured in Jenkins)
+        // This is typically a 'Username with password' credential
+        DOCKER_CREDENTIAL_ID = 'dockerhub' // Example: 'my-docker-cred'
+    }
+
+    stages {
+        stage('Checkout Source Code') {
+            steps {
+                script {
+                    // Checkout the SCM (Source Code Management) configured in your Jenkins job
+                    // For a Git repository, this would typically be:
+                    // git branch: 'main', url: 'https://github.com/your-repo/your-app.git'
+                    // If your Jenkins job is already configured with SCM, 'checkout scm' is sufficient.
+                    checkout scm
+                    echo "Source code checked out successfully."
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image using the Dockerfile in the current directory
+                    // The build command will create an image named 'image-to-text-converter-app:latest'
+                    echo "Building Docker image: ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest ." // Also tag with latest
+                    echo "Docker image built successfully."
+                }
+            }
+        }
+
+        // --- Optional Stage: Run Tests ---
+        // This stage assumes you have a way to run tests for your Flask application.
+        // For example, if you had a 'test_app.py' file and used pytest:
+        // stage('Run Tests') {
+        //     steps {
+        //         script {
+        //             echo "Running application tests..."
+        //             // You might need to run tests inside the Docker container
+        //             // Or, if your tests are simple Python scripts, run them directly
+        //             sh "docker run --rm ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} python -m pytest"
+        //             echo "Tests completed."
+        //         }
+        //     }
+        // }
+
+        stage('Login to Docker Registry') {
+            steps {
+                script {
+                    // Log in to the Docker registry using Jenkins credentials
+                    // Ensure 'docker-hub-credentials' (or your chosen ID) is configured in Jenkins
+                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIAL_ID}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin ${DOCKER_REGISTRY}"
+                        echo "Logged into Docker registry."
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    // Push the tagged Docker image to the registry
+                    echo "Pushing Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" // Push latest tag too
+                    echo "Docker image pushed successfully."
+                }
+            }
+        }
+
+        // --- Optional Stage: Deploy to Environment ---
+        // This is a placeholder. Your actual deployment steps will vary greatly.
+        // Examples:
+        // - Kubernetes deployment (kubectl apply -f your-deployment.yaml)
+        // - AWS ECS/EKS deployment (using AWS CLI or eksctl)
+        // - SSH into a server and run 'docker run'
+        // stage('Deploy to Production') {
+        //     steps {
+        //         script {
+        //             echo "Deploying application to production environment..."
+        //             // Example: Deploy to a server via SSH
+        //             // sh "ssh user@your-server 'docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest && docker stop my-app || true && docker rm my-app || true && docker run -d --name my-app -p 5000:5000 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest'"
+        //             echo "Deployment initiated. Check your deployment logs for status."
+        //         }
+        //     }
+        // }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished."
+            // Clean up Docker login session
+            sh "docker logout ${DOCKER_REGISTRY}"
+        }
+        success {
+            echo "Pipeline succeeded!"
+        }
+        failure {
+            echo "Pipeline failed! Check logs for errors."
+        }
+        unstable {
+            echo "Pipeline is unstable, some steps might have failed."
+        }
+    }
+}
