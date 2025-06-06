@@ -1,67 +1,62 @@
 // Jenkinsfile for Image to Text Converter Flask App
 
 pipeline {
-    agent any // Specifies that the pipeline can run on any available agent
+    agent any
 
-    // Environment variables (replace with your actual values or Jenkins credentials)
+    // Environment variables
     environment {
-        // Replace with your Docker registry URL (e.g., your-docker-hub-username)
-        // For AWS ECR, it would be like: 123456789012.dkr.ecr.your-region.amazonaws.com
         DOCKER_REGISTRY = 'docker.io'
-        // Replace with your Docker image name
-        DOCKER_IMAGE_NAME = 'ayush5626/image-to-text-converter-app'
-        // Jenkins credential ID for Docker Hub login (configured in Jenkins)
-        // This is typically a 'Username with password' credential
-        DOCKER_CREDENTIAL_ID = 'dockerhub' // Example: 'my-docker-cred'
+        DOCKER_IMAGE_NAME = 'ayush5626/image-to-text-converter-app' // Make sure this is your correct Docker Hub username/repo name
+        DOCKER_CREDENTIAL_ID = 'docker-hub-credentials'
+        APP_CONTAINER_NAME = 'image-to-text-converter' // Define a consistent name for your running container
     }
 
     stages {
         stage('Checkout Source Code') {
             steps {
                 script {
-                    // Checkout the SCM (Source Code Management) configured in your Jenkins job
-                    // For a Git repository, this would typically be:
-                    // git branch: 'main', url: 'https://github.com/your-repo/your-app.git'
-                    // If your Jenkins job is already configured with SCM, 'checkout scm' is sufficient.
                     checkout scm
                     echo "Source code checked out successfully."
                 }
             }
         }
 
-       // stage('Build Docker Image') {
-       //     steps {
-       //         script {
-       //             // Build the Docker image using the Dockerfile in the current directory
-       //             // The build command will create an image named 'image-to-text-converter-app:latest'
-       //             echo "Building Docker image: ${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"	 
-//		    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ."
- //                   sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest ." // Also tag with latest
-  //                  echo "Docker image built successfully."
-   //             }
-    //        }
-      //  }
+        stage('Clean Docker Environment') {
+            steps {
+                script {
+                    echo "Attempting to stop and remove old Docker container '${APP_CONTAINER_NAME}'..."
+                    // Stop the old running container if it exists. '|| true' prevents pipeline failure if it's not running.
+                    sh "docker stop ${APP_CONTAINER_NAME} || true"
+                    echo "Attempting to remove old Docker container '${APP_CONTAINER_NAME}'..."
+                    // Remove the old container. '|| true' prevents pipeline failure if it doesn't exist.
+                    sh "docker rm ${APP_CONTAINER_NAME} || true"
 
-        // --- Optional Stage: Run Tests ---
-        // This stage assumes you have a way to run tests for your Flask application.
-        // For example, if you had a 'test_app.py' file and used pytest:
-        // stage('Run Tests') {
-        //     steps {
-        //         script {
-        //             echo "Running application tests..."
-        //             // You might need to run tests inside the Docker container
-        //             // Or, if your tests are simple Python scripts, run them directly
-        //             sh "docker run --rm ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} python -m pytest"
-        //             echo "Tests completed."
-        //         }
-        //     }
-        // }
+                    echo "Attempting to remove old 'latest' Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    // Remove the previous 'latest' image. This is important to ensure the new 'latest' tag is clean.
+                    // '|| true' prevents pipeline failure if the image is not found or in use.
+                    sh "docker rmi ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest || true"
+
+                    // Optional: You can also prune dangling images to free up space. Use with caution.
+                    // sh "docker image prune -f"
+                    echo "Docker environment cleanup completed."
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // The build command will create an image tagged with the build number
+                    echo "Building Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    echo "Docker image built successfully."
+                }
+            }
+        }
 
         stage('Login to Docker Registry') {
             steps {
                 script {
-                    // Log in to the Docker registry using Jenkins credentials
-                    // Ensure 'docker-hub-credentials' (or your chosen ID) is configured in Jenkins
                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIAL_ID}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
                         sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin ${DOCKER_REGISTRY}"
                         echo "Logged into Docker registry."
@@ -73,38 +68,39 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    // Push the tagged Docker image to the registry
-                    echo "Pushing Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    echo "Pushing Docker image with build number tag: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
                     sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" // Push latest tag too
+
+                    // After pushing the specific build, tag and push it as 'latest'
+                    echo "Tagging and pushing image as 'latest': ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    sh "docker tag ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+
                     echo "Docker image pushed successfully."
                 }
             }
         }
 
         // --- Optional Stage: Deploy to Environment ---
-        // This is a placeholder. Your actual deployment steps will vary greatly.
-        // Examples:
-        // - Kubernetes deployment (kubectl apply -f your-deployment.yaml)
-        // - AWS ECS/EKS deployment (using AWS CLI or eksctl)
-        // - SSH into a server and run 'docker run'
-        // stage('Deploy to Production') {
-        //     steps {
-        //         script {
-        //             echo "Deploying application to production environment..."
-        //             // Example: Deploy to a server via SSH
-        //             // sh "ssh user@your-server 'docker pull ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest && docker stop my-app || true && docker rm my-app || true && docker run -d --name my-app -p 5000:5000 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest'"
-        //             echo "Deployment initiated. Check your deployment logs for status."
-        //         }
-        //     }
-        // }
+        // This is where you would run your new container.
+        // Make sure to use the APP_CONTAINER_NAME defined in environment.
+        stage('Deploy to Production') {
+            steps {
+                script {
+                    echo "Deploying application to production environment..."
+                    // Example: Run the new container
+                    // Make sure port 5000 is available on the host, or change the host port.
+                    sh "docker run -d --name ${APP_CONTAINER_NAME} -p 5000:5000 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    echo "Application container ${APP_CONTAINER_NAME} started with latest image."
+                }
+            }
+        }
     }
 
     post {
         always {
             echo "Pipeline finished."
-            // Clean up Docker login session
-            sh "docker logout ${DOCKER_REGISTRY}"
+            sh "docker logout ${DOCKER_REGISTRY}" // Clean up Docker login session
         }
         success {
             echo "Pipeline succeeded!"
