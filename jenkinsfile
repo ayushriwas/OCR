@@ -9,7 +9,7 @@ pipeline {
         // For AWS ECR, it would be like: 123456789012.dkr.ecr.your-region.amazonaws.com
         DOCKER_REGISTRY = 'docker.io'
         // Replace with your Docker image name
-        DOCKER_IMAGE_NAME = 'image-to-text-converter-app'
+        DOCKER_IMAGE_NAME = 'ayush5626/image-to-text-converter-app'
         // Jenkins credential ID for Docker Hub login (configured in Jenkins)
         // This is typically a 'Username with password' credential
         DOCKER_CREDENTIAL_ID = 'dockerhub' // Example: 'my-docker-cred'
