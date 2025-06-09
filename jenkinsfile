@@ -84,7 +84,7 @@ pipeline {
                                      string(credentialsId: 'jenkins-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                         sh "export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}'"
                         sh "export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}'"
-                        sh "export AWS_DEFAULT_REGION='${AWS_REGION}'" # Set default region for AWS CLI
+                        sh "export AWS_DEFAULT_REGION='${AWS_REGION}'"
                         sh "S3_BUCKET_NAME=${S3_BUCKET_NAME} ./build_opencv_layer.sh"
                     }
                     echo "Custom OpenCV layer build script executed. Check logs for S3 upload status."
