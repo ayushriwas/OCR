@@ -1,21 +1,35 @@
-// Jenkinsfile for Image to Text Converter Flask App
+// Jenkinsfile for Cloud OCR Converter - Phase 1 Local Testing Only
 
 pipeline {
-    agent any
+    agent any // Jenkins will use any available agent
 
-    // Environment variables
+    // Environment variables specific to this simplified pipeline
     environment {
+        // Docker Hub settings for your Flask app image
         DOCKER_REGISTRY = 'docker.io'
-        DOCKER_IMAGE_NAME = 'ayush5626/image-to-text-converter-app' // Make sure this is your correct Docker Hub username/repo name
-        DOCKER_CREDENTIAL_ID = 'docker-hub-credentials'
-        APP_CONTAINER_NAME = 'image-to-text-converter' // Define a consistent name for your running container
+        // IMPORTANT: Replace 'your_docker_hub_username' with your actual Docker Hub username
+        DOCKER_IMAGE_NAME = 'ayush5626/image-to-text-converter-app'
+        DOCKER_CREDENTIAL_ID = 'docker-hub-credentials' // Jenkins credential ID for Docker Hub login (Username with password)
+
+        // Name for the running Flask container (for easier management)
+        FLASK_APP_CONTAINER_NAME = 'cloud-ocr-flask-app'
+
+        // AWS details (only used by build_opencv_layer.sh in this phase, not directly for deployment)
+        S3_BUCKET_NAME = 'ocr-bucket--0632' // Your S3 bucket name for layer uploads
+        AWS_REGION = 'us-east-1' // e.g., 'us-east-1', 'ap-south-1'
+
+        // AWS Credentials for the 'build_opencv_layer.sh' script to upload to S3.
+        // If these are not configured in Jenkins, the S3 upload part of the script will fail,
+        // but the layer zip will still be built locally.
+        AWS_ACCESS_KEY_ID_CRED = credentials('jenkins-aws-access-key-id') // Jenkins Secret Text Credential ID
+        AWS_SECRET_ACCESS_KEY_CRED = credentials('jenkins-aws-secret-access-key') // Jenkins Secret Text Credential ID
     }
 
     stages {
         stage('Checkout Source Code') {
             steps {
                 script {
-                    checkout scm
+                    checkout scm // Checks out the code from your Git repository
                     echo "Source code checked out successfully."
                 }
             }
@@ -24,74 +38,69 @@ pipeline {
         stage('Clean Docker Environment') {
             steps {
                 script {
-                    echo "Attempting to stop and remove old Docker container '${APP_CONTAINER_NAME}'..."
-                    // Stop the old running container if it exists. '|| true' prevents pipeline failure if it's not running.
-                    sh "docker stop ${APP_CONTAINER_NAME} || true"
-                    echo "Attempting to remove old Docker container '${APP_CONTAINER_NAME}'..."
-                    // Remove the old container. '|| true' prevents pipeline failure if it doesn't exist.
-                    sh "docker rm ${APP_CONTAINER_NAME} || true"
-
-                    echo "Attempting to remove old 'latest' Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-                    // Remove the previous 'latest' image. This is important to ensure the new 'latest' tag is clean.
-                    // '|| true' prevents pipeline failure if the image is not found or in use.
-                    sh "docker rmi ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest || true"
-
-                    // Optional: You can also prune dangling images to free up space. Use with caution.
-                    // sh "docker image prune -f"
+                    echo "Attempting to stop and remove old Docker container '${FLASK_APP_CONTAINER_NAME}'..."
+                    // '|| true' makes the command succeed even if container doesn't exist (e.g., first run)
+                    sh "docker stop ${FLASK_APP_CONTAINER_NAME} || true"
+                    echo "Attempting to remove old Docker container '${FLASK_APP_CONTAINER_NAME}'..."
+                    sh "docker rm ${FLASK_APP_CONTAINER_NAME} || true"
+                    echo "Attempting to remove old Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    sh "docker rmi ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest || true" // Remove if it exists
                     echo "Docker environment cleanup completed."
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Flask Docker Image') {
             steps {
                 script {
-                    // The build command will create an image tagged with the build number
-                    echo "Building Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ."
+                    echo "Building Docker image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    // Build the Docker image from the Dockerfile in the current directory
+                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest ."
                     echo "Docker image built successfully."
                 }
             }
         }
 
-        stage('Login to Docker Registry') {
+        stage('Run Flask Docker Container Locally') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIAL_ID}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                        sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin ${DOCKER_REGISTRY}"
-                        echo "Logged into Docker registry."
+                    echo "Running Flask app in Docker container on Jenkins agent..."
+                    // Run the container, mapping port 5000 (app) to 5000 (host)
+                    // The app will be accessible at http://<Jenkins_Agent_IP>:5000 if firewall allows
+                    sh "docker run -d --name ${FLASK_APP_CONTAINER_NAME} -p 5000:5000 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+                    echo "Flask Docker container started. (Check Jenkins agent host IP on port 5000)"
+                }
+            }
+        }
+
+        stage('Build Custom OpenCV Lambda Layer Artifact') {
+            steps {
+                script {
+                    echo "Building custom OpenCV layer artifact locally (requires Docker Desktop and AWS CLI on agent)..."
+                    // This script builds the layer ZIP and *attempts* to upload it to S3.
+                    // If AWS CLI credentials are not configured in Jenkins, the S3 upload step will fail,
+                    // but the ZIP artifact will still be created locally in the workspace.
+                    withCredentials([string(credentialsId: 'jenkins-aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                                     string(credentialsId: 'jenkins-aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh "export AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}'"
+                        sh "export AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}'"
+                        sh "export AWS_DEFAULT_REGION='${AWS_REGION}'" # Set default region for AWS CLI
+                        sh "S3_BUCKET_NAME=${S3_BUCKET_NAME} ./build_opencv_layer.sh"
                     }
+                    echo "Custom OpenCV layer build script executed. Check logs for S3 upload status."
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        // --- Optional: Add a stage to stop the container when the build is done ---
+        // This is good practice for clean up on a local Jenkins agent.
+        stage('Stop Flask Docker Container') {
             steps {
                 script {
-                    echo "Pushing Docker image with build number tag: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER}"
-
-                    // After pushing the specific build, tag and push it as 'latest'
-                    echo "Tagging and pushing image as 'latest': ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-                    sh "docker tag ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-
-                    echo "Docker image pushed successfully."
-                }
-            }
-        }
-
-        // --- Optional Stage: Deploy to Environment ---
-        // This is where you would run your new container.
-        // Make sure to use the APP_CONTAINER_NAME defined in environment.
-        stage('Deploy to Production') {
-            steps {
-                script {
-                    echo "Deploying application to production environment..."
-                    // Example: Run the new container
-                    // Make sure port 5000 is available on the host, or change the host port.
-                    sh "docker run -d --name ${APP_CONTAINER_NAME} -p 5000:5000 ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-                    echo "Application container ${APP_CONTAINER_NAME} started with latest image."
+                    echo "Stopping Flask Docker container..."
+                    sh "docker stop ${FLASK_APP_CONTAINER_NAME} || true" // Stop gracefully
+                    sh "docker rm ${FLASK_APP_CONTAINER_NAME} || true"   // Remove
+                    echo "Flask Docker container stopped and removed."
                 }
             }
         }
@@ -99,17 +108,13 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline finished."
-            sh "docker logout ${DOCKER_REGISTRY}" // Clean up Docker login session
-        }
-        success {
-            echo "Pipeline succeeded!"
+            echo "Phase 1 Jenkins pipeline finished."
         }
         failure {
-            echo "Pipeline failed! Check logs for errors."
+            echo "Phase 1 Jenkins pipeline failed. Review logs for details."
         }
-        unstable {
-            echo "Pipeline is unstable, some steps might have failed."
+        success {
+            echo "Phase 1 Jenkins pipeline succeeded!"
         }
     }
 }
