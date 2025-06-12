@@ -58,32 +58,33 @@
                 <input type="file" id="imageUpload" accept="image/*" class="form-control" required>
             </div>
             
+            <div class="radio-group mb-4">
+                <span class="block text-gray-700 text-sm font-bold mb-2">
+                    Choose OCR Model:
+                </span>
+                <label class="inline-flex items-center">
+                    <input type="radio" name="ocrModel" value="tesseract" class="form-radio text-blue-600 rounded-full" checked>
+                    <span class="ml-2 text-gray-700">Tesseract</span>
+                </label>
+                <label class="inline-flex items-center ml-6">
+                    <input type="radio" name="ocrModel" value="textract" class="form-radio text-blue-600 rounded-full">
+                    <span class="ml-2 text-gray-700">Amazon Textract</span>
+                </label>
+            </div>
+
+
             <button type="submit" class="btn-primary w-full">Convert Image to Text</button>
         </form>
 
         <div id="loadingIndicator">Processing image... Please wait.</div>
         <div id="messageBox"></div>
 
-        <div id="resultsSection" class="mt-8 hidden">
-            <h2 class="text-2xl font-bold mb-4 text-gray-800">OCR Results</h2>
-            <div class="image-display-container">
-                <div class="image-wrapper">
-                    <p class="text-gray-600 mb-2 font-semibold">Original Image:</p>
-                    <img id="originalImagePreview" src="#" alt="Original Image" class="max-w-full h-auto rounded-lg">
-                </div>
-                <div class="image-wrapper">
-                    <p class="text-gray-600 mb-2 font-semibold">Preprocessed Image:</p>
-                    <img id="preprocessedImagePreview" src="#" alt="Preprocessed Image" class="max-w-full h-auto rounded-lg">
-                </div>
-            </div>
-
-            <div class="mt-6">
-                <label for="outputText" class="block text-gray-700 text-sm font-bold mb-2">
-                    Extracted Text:
-                </label>
-                <textarea id="outputText" rows="10" class="form-control" placeholder="Extracted text will appear here..." readonly></textarea>
-                <button id="copyButton" class="btn-secondary mt-4 w-full">Copy Text</button>
-            </div>
+        <div class="mt-8">
+            <label for="outputText" class="block text-gray-700 text-sm font-bold mb-2">
+                Extracted Text:
+            </label>
+            <textarea id="outputText" rows="10" class="form-control" placeholder="Extracted text will appear here..." readonly></textarea>
+            <button id="copyButton" class="btn-secondary mt-4 w-full">Copy Text</button>
         </div>
     </div>
 
@@ -92,9 +93,6 @@
         const imageUpload = document.getElementById('imageUpload');
         const loadingIndicator = document.getElementById('loadingIndicator');
         const messageBox = document.getElementById('messageBox');
-        const resultsSection = document.getElementById('resultsSection');
-        const originalImagePreview = document.getElementById('originalImagePreview');
-        const preprocessedImagePreview = document.getElementById('preprocessedImagePreview');
         const outputText = document.getElementById('outputText');
         const copyButton = document.getElementById('copyButton');
 
@@ -109,31 +107,27 @@
             messageBox.textContent = '';
         }
 
-        function resetResults() {
-            resultsSection.classList.add('hidden');
-            originalImagePreview.src = '#';
-            preprocessedImagePreview.src = '#';
-            outputText.value = '';
-            hideMessage();
-        }
-
         uploadForm.addEventListener('submit', async function(event) {
             event.preventDefault();
-            resetResults(); // Clear previous results
+            hideMessage(); // Clear previous messages
             loadingIndicator.style.display = 'block';
+            outputText.value = 'Processing...';
 
             const file = imageUpload.files[0];
             if (!file) {
                 showMessage('Please select an image file.', 'error');
                 loadingIndicator.style.display = 'none';
+                outputText.value = '';
                 return;
             }
 
+            const selectedOcrModel = document.querySelector('input[name="ocrModel"]:checked').value;
+
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('ocr_model', selectedOcrModel); // Pass the selected model
 
             try {
-                // Step 1: Upload image to Flask backend
                 const uploadResponse = await fetch('/upload', {
                     method: 'POST',
                     body: formData,
@@ -141,59 +135,11 @@
 
                 if (!uploadResponse.ok) {
                     const errorData = await uploadResponse.json();
-                    throw new Error(errorData.error || 'Failed to upload image.');
+                    throw new Error(errorData.error || 'Failed to upload image or perform OCR.');
                 }
 
-                const uploadData = await uploadResponse.json();
-                const jobId = uploadData.job_id;
-                showMessage(`Upload successful. Processing initiated. Job ID: ${jobId}. Waiting for results...`, 'success');
-
-                // Step 2: Poll for results
-                let attempts = 0;
-                const maxAttempts = 60; // Poll for up to 60 * 2 seconds = 2 minutes
-                const pollInterval = 2000; // 2 seconds
-
-                const pollPromise = new Promise((resolve, reject) => {
-                    const intervalId = setInterval(async () => {
-                        if (attempts >= maxAttempts) {
-                            clearInterval(intervalId);
-                            reject(new Error('Processing timed out. Please try again.'));
-                            return;
-                        }
-                        attempts++;
-
-                        try {
-                            const resultsResponse = await fetch(`/results/${jobId}`);
-                            if (!resultsResponse.ok) {
-                                const errorData = await resultsResponse.json();
-                                clearInterval(intervalId);
-                                reject(new Error(errorData.error || 'Failed to fetch results.'));
-                                return;
-                            }
-                            const resultsData = await resultsResponse.json();
-
-                            if (resultsData.status === 'COMPLETED') {
-                                clearInterval(intervalId);
-                                resolve(resultsData);
-                            } else if (resultsData.status === 'FAILED') {
-                                clearInterval(intervalId);
-                                reject(new Error(`Processing failed: ${resultsData.error_message || 'Unknown error.'}`));
-                            }
-                            // If status is PENDING, continue polling
-                        } catch (pollError) {
-                            clearInterval(intervalId);
-                            reject(new Error(`Polling error: ${pollError.message}`));
-                        }
-                    }, pollInterval);
-                });
-
-                const finalResults = await pollPromise;
-
-                loadingIndicator.style.display = 'none';
-                resultsSection.classList.remove('hidden');
-                originalImagePreview.src = finalResults.original_image_url;
-                preprocessedImagePreview.src = finalResults.preprocessed_image_url;
-                outputText.value = finalResults.extracted_text;
+                const responseData = await uploadResponse.json();
+                outputText.value = responseData.text; // Display the extracted text
                 showMessage('OCR results retrieved successfully!', 'success');
 
             } catch (error) {
@@ -201,6 +147,8 @@
                 loadingIndicator.style.display = 'none';
                 showMessage(`Error: ${error.message}`, 'error');
                 outputText.value = ''; // Clear output text on error
+            } finally {
+                loadingIndicator.style.display = 'none';
             }
         });
 

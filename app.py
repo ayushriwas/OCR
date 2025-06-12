@@ -1,163 +1,224 @@
-import os
-import uuid
-import boto3
 from flask import Flask, request, jsonify, render_template
-from dotenv import load_dotenv
-import time # For polling simulation
+import os
+import cv2
+import numpy as np
+import pytesseract
+from PIL import Image
+import io
+import boto3
+from dotenv import load_dotenv # For loading environment variables from .env
+import uuid # Import uuid for unique filenames
 
+# Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-# --- AWS Configuration ---
+# --- Configuration ---
+# Set the path to the Tesseract executable (change this if Tesseract is not in your PATH)
+# For Docker, Tesseract will be in the PATH after installation in the Dockerfile.
+# For local development, you might need to specify the full path like:
+# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract' # Common Linux path
+# Ensure Tesseract is installed and its path is correctly set if needed.
+
+# AWS Textract Configuration
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-AWS_REGION_NAME = os.environ.get('AWS_REGION_NAME', 'us-east-1')
+AWS_REGION_NAME = os.environ.get('AWS_REGION_NAME', 'us-east-1') # Default to us-east-1
 
-S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
-DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
+# S3 Configuration
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME') # IMPORTANT: Set this environment variable in .env
+S3_REGION = os.environ.get('S3_REGION', AWS_REGION_NAME) # Use same region as Textract by default
 
-# Initialize AWS clients
-s3_client = None
-dynamodb_client = None
-
+# Initialize Textract client if AWS credentials are provided
+textract_client = None
 if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    try:
+        textract_client = boto3.client(
+            'textract',
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            region_name=AWS_REGION_NAME
+        )
+        print("Amazon Textract client initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing Textract client: {e}")
+        textract_client = None
+else:
+    print("AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not found. Amazon Textract will not be available.")
+
+# Initialize S3 client if S3 bucket name is provided and AWS credentials are set
+s3_client = None
+if S3_BUCKET_NAME and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     try:
         s3_client = boto3.client(
             's3',
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            region_name=AWS_REGION_NAME
+            region_name=S3_REGION
         )
-        dynamodb_client = boto3.client(
-            'dynamodb',
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            region_name=AWS_REGION_NAME
-        )
-        print("AWS S3 and DynamoDB clients initialized.")
+        print(f"S3 client initialized successfully for bucket: {S3_BUCKET_NAME}")
     except Exception as e:
-        print(f"Error initializing AWS clients: {e}")
+        print(f"Error initializing S3 client: {e}")
+        s3_client = None
 else:
-    print("AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not found. AWS services will not be available.")
-    # For local testing without AWS, you might want to mock these or handle gracefully.
+    print("S3_BUCKET_NAME or AWS credentials not found. S3 upload will not be available.")
 
-# --- Flask Routes ---
 
-# Ensure Flask serves index.html from a 'templates' folder
-# Make sure your index.html is located in a 'templates' subfolder within your Flask app's root.
+# --- Helper Functions ---
+
+# Serve index.html from 'templates' folder
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
+def preprocess_image_from_bytes(image_bytes):
+    """
+    Preprocesses the image using OpenCV for better OCR accuracy.
+    Converts to grayscale, applies Gaussian blur, and adaptive thresholding.
+    Takes image bytes as input.
+    """
+    try:
+        np_array = np.frombuffer(image_bytes, np.uint8)
+        image = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise ValueError("Could not decode image bytes for preprocessing.")
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        thresh = cv2.adaptiveThreshold(blurred, 255,
+                                       cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv2.THRESH_BINARY, 11, 2)
+        return Image.fromarray(thresh)
+    except Exception as e:
+        print(f"Error during image preprocessing from bytes: {e}")
+        raise
+
+def ocr_with_tesseract(image_bytes_for_tesseract):
+    """
+    Performs OCR on image bytes using Tesseract.
+    The image bytes are assumed to be downloaded from S3 if coming from that flow.
+    """
+    try:
+        # Preprocess the downloaded image bytes for Tesseract
+        preprocessed_pil_image = preprocess_image_from_bytes(image_bytes_for_tesseract)
+        text = pytesseract.image_to_string(preprocessed_pil_image)
+        return text
+    except pytesseract.TesseractNotFoundError:
+        raise Exception("Tesseract is not installed or not found in your system's PATH. Please install it or set pytesseract.pytesseract.tesseract_cmd.")
+    except Exception as e:
+        raise Exception(f"Tesseract OCR failed: {e}")
+
+def ocr_with_textract_s3(bucket_name, s3_key):
+    """
+    Performs OCR on an image stored in S3 using Amazon Textract.
+    """
+    if not textract_client:
+        raise Exception("Amazon Textract client is not initialized. Check AWS credentials.")
+    if not bucket_name or not s3_key:
+        raise Exception("S3 bucket name or key not provided for Textract.")
+
+    try:
+        print(f"Calling Textract on s3://{bucket_name}/{s3_key}")
+        response = textract_client.detect_document_text(
+            Document={
+                'S3Object': {
+                    'Bucket': bucket_name,
+                    'Name': s3_key
+                }
+            }
+        )
+        extracted_text = ""
+        for item in response.get('Blocks', []):
+            if item['BlockType'] == 'LINE':
+                extracted_text += item['Text'] + "\n"
+        return extracted_text.strip()
+    except Exception as e:
+        raise Exception(f"Amazon Textract OCR failed for S3 object: {e}")
+
+def upload_to_s3(file_bytes, filename, content_type):
+    """Uploads file bytes to S3 and returns the S3 key."""
+    if not s3_client or not S3_BUCKET_NAME:
+        raise Exception("S3 client not initialized or bucket name not set. Cannot upload to S3.")
+    
+    # Create a unique filename for S3 to avoid collisions
+    s3_key = f"uploads/{uuid.uuid4()}-{filename}" 
+    try:
+        s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=s3_key, Body=file_bytes, ContentType=content_type)
+        print(f"Uploaded {filename} to s3://{S3_BUCKET_NAME}/{s3_key}")
+        return s3_key
+    except Exception as e:
+        raise Exception(f"Failed to upload image to S3: {e}")
+
+def delete_from_s3(s3_key):
+    """Deletes an object from S3."""
+    if not s3_client or not S3_BUCKET_NAME:
+        print("S3 client not initialized or bucket name not set. Cannot delete from S3.")
+        return
+    try:
+        s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=s3_key)
+        print(f"Deleted s3://{S3_BUCKET_NAME}/{s3_key} from S3.")
+    except Exception as e:
+        print(f"Error deleting object {s3_key} from S3: {e}")
+
+
+# --- Flask Routes ---
+
 @app.route('/upload', methods=['POST'])
-def upload_image():
+def upload_file():
+    """
+    Handles image upload, uploads to S3, and performs OCR using selected model.
+    """
     if 'image' not in request.files:
         return jsonify({'error': 'No image file provided'}), 400
 
     file = request.files['image']
+    ocr_model = request.form.get('ocr_model', 'tesseract') # Default to tesseract
+
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
-    if not s3_client or not S3_BUCKET_NAME:
-        return jsonify({'error': 'S3 client not initialized or bucket name not set.'}), 500
-    if not dynamodb_client or not DYNAMODB_TABLE_NAME:
-        return jsonify({'error': 'DynamoDB client not initialized or table name not set.'}), 500
+    s3_key = None # Initialize s3_key to None, will be set upon successful S3 upload
 
-    try:
-        image_bytes = file.read()
-        original_filename = file.filename
-        content_type = file.content_type
+    if file:
+        try:
+            image_bytes = file.read() # Read image content as bytes
+            original_filename = file.filename
+            content_type = file.content_type
 
-        # Generate a unique job ID
-        job_id = str(uuid.uuid4())
-        
-        # Define S3 key for the original image. This path triggers the Lambda function.
-        s3_original_key = f"original-images/{job_id}-{original_filename}"
+            # --- Step 1: Upload image to S3 ---
+            if s3_client and S3_BUCKET_NAME:
+                s3_key = upload_to_s3(image_bytes, original_filename, content_type)
+            else:
+                # If S3 is not configured/available, return an error as S3 upload is a requirement
+                return jsonify({'error': 'S3 configuration missing. Cannot upload image to S3.'}), 500
 
-        # 1. Upload original image to S3
-        s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=s3_original_key, Body=image_bytes, ContentType=content_type)
-        print(f"Uploaded original image to s3://{S3_BUCKET_NAME}/{s3_original_key}")
+            # --- Step 2: Perform OCR based on selected model ---
+            extracted_text = ""
+            if ocr_model == 'tesseract':
+                print("Using Tesseract OCR (downloading from S3 temporarily)...")
+                # Download image from S3 for Tesseract processing
+                s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=s3_key)
+                downloaded_image_bytes = s3_object['Body'].read()
+                extracted_text = ocr_with_tesseract(downloaded_image_bytes)
+            elif ocr_model == 'textract':
+                print("Using Amazon Textract OCR (directly from S3)...")
+                extracted_text = ocr_with_textract_s3(S3_BUCKET_NAME, s3_key)
+            else:
+                return jsonify({'error': 'Invalid OCR model selected'}), 400
 
-        # 2. Create initial DynamoDB entry
-        # The job_id here is what the Lambda function will use to update the item.
-        dynamodb_client.put_item(
-            TableName=DYNAMODB_TABLE_NAME,
-            Item={
-                'job_id': {'S': job_id},
-                'status': {'S': 'PENDING'},
-                'original_s3_key': {'S': s3_original_key}, # Store the S3 key so Lambda can retrieve it
-                'timestamp': {'S': str(time.time())} 
-            }
-        )
-        print(f"Created DynamoDB entry for job_id: {job_id}")
+            return jsonify({'text': extracted_text}), 200
 
-        return jsonify({'job_id': job_id, 'message': 'Image uploaded and processing initiated.'}), 200
-
-    except Exception as e:
-        print(f"Error during image upload or DynamoDB creation: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/results/<job_id>', methods=['GET'])
-def get_ocr_results(job_id):
-    if not dynamodb_client or not DYNAMODB_TABLE_NAME:
-        return jsonify({'error': 'DynamoDB client not initialized or table name not set.'}), 500
-    if not s3_client or not S3_BUCKET_NAME:
-        return jsonify({'error': 'S3 client not initialized or bucket name not set.'}), 500
-
-
-    try:
-        response = dynamodb_client.get_item(
-            TableName=DYNAMODB_TABLE_NAME,
-            Key={'job_id': {'S': job_id}}
-        )
-        
-        item = response.get('Item')
-        if not item:
-            return jsonify({'status': 'NOT_FOUND', 'message': 'Job ID not found.'}), 404
-
-        status = item['status']['S']
-        result = {
-            'job_id': item['job_id']['S'],
-            'status': status
-        }
-
-        if status == 'COMPLETED':
-            # Generate pre-signed URLs for display
-            original_s3_key = item['original_s3_key']['S']
-            preprocessed_s3_key = item.get('preprocessed_s3_key', {}).get('S')
-            extracted_text = item.get('extracted_text', {}).get('S', '')
-
-            result['extracted_text'] = extracted_text
-            
-            # Generate pre-signed URLs (valid for 1 hour)
-            if original_s3_key and S3_BUCKET_NAME:
-                result['original_image_url'] = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': S3_BUCKET_NAME, 'Key': original_s3_key},
-                    ExpiresIn=3600 
-                )
-            if preprocessed_s3_key and S3_BUCKET_NAME:
-                result['preprocessed_image_url'] = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': S3_BUCKET_NAME, 'Key': preprocessed_s3_key},
-                    ExpiresIn=3600
-                )
-        elif status == 'FAILED':
-            result['error_message'] = item.get('error_message', {}).get('S', 'Unknown error during processing.')
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        print(f"Error fetching OCR results from DynamoDB: {e}")
-        return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            print(f"Server error: {e}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            # --- Step 3: Clean up image from S3 (optional, but recommended for temporary files) ---
+            if s3_key: # Only try to delete if an S3 key was successfully generated
+                delete_from_s3(s3_key)
 
 if __name__ == '__main__':
-    # Flask will look for index.html inside a 'templates' folder by default.
-    # Ensure your project structure is:
-    # your-app/
-    # ├── app.py
-    # └── templates/
-    #     └── index.html
     app.run(debug=True, host='0.0.0.0', port=5000)
 

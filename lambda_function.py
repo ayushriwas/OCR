@@ -46,7 +46,7 @@ def preprocess_image_opencv(image_bytes):
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
         # Adaptive thresholding (often good for varied lighting and text clarity)
-        thresh = cv2.adaptiveTHRESH_GAUSSIAN_C(blurred, 255,
+        thresh = cv2.adaptiveThreshold(blurred, 255,
                                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                        cv2.THRESH_BINARY, 11, 2)
         
@@ -166,4 +166,3 @@ def lambda_handler(event, context):
             logger.error(f"Failed to update DynamoDB with FAILED status for job_id {job_id}: {db_e}")
         
         return {'statusCode': 500, 'body': f'Error processing image: {e}'}
-
