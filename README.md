@@ -1,6 +1,48 @@
-## Project is in development Phase as there are some changes which I am trying to apply You will get to see the Updated version very soon! Thank you for visiting
+# Project is in development Phase as there are some changes which I am trying to apply You will get to see the Updated version very soon! Thank you for visiting
 
-Working 
+## Technologies Used
+
+### Frontend:
+- HTML
+- CSS
+- Bootstrap 
+- JavaScript
+
+### Backend:
+- Python
+- Flask
+
+## Getting Started
+### Prerequisites
+
+```bash
+cvzone==1.5.6
+Flask==2.2.3
+Pillow==11.0.0
+pytesseract==0.3.10
+Werkzeug==2.2.3
+```
+Or
+
+Install the above required packages using:
+
+```bash
+pip install -r requirements.txt
+```
+### Deployment
+
+To deploy this project run:
+
+```bash
+python app.py
+```
+Open your browser and browse to the following address:
+
+```bash
+http://localhost:8000/
+```
+
+### Working 
 
 The project's workflow is a fully automated, end-to-end system for Optical Character Recognition (OCR), designed to be scalable and resilient on AWS. It combines a user-facing web application with a complex, event-driven backend process, all managed by robust DevOps practices.
 
