@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Textifier | Image to Text Converter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+            
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+
+        a {
+            text-decoration: none;
+            color: white;
+        }
+
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        /* --- Header & Navigation --- */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding-bottom: 200px;
+            color: white;
+            clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+        }
+
+        .header p {
+            color: #e2e8f0;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: auto;
+            padding: 0 40px;
+        }
+
+        .navbar {
+            display: flex;
+            align-items: center;
+            padding: 25px 0;
+        }
+
+        nav {
+            flex: 1;
+            text-align: right;
+        }
+
+        nav ul {
+            display: inline-block;
+            list-style-type: none;
+        }
+
+        nav ul li {
+            display: inline-block;
+            margin-left: 30px;
+        }
+
+        nav a {
+            font-size: 16px;
+            font-weight: 500;
+            position: relative;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #ffb7b2;       
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            transform: scaleX(0);
+            height: 2px;
+            bottom: -5px;
+            left: 0;
+            background-color: #ffb7b2;
+            transform-origin: bottom right;
+            transition: transform 0.3s ease-out;
+        }
+
+        nav a:hover::after {
+            transform: scaleX(1);
+            transform-origin: left;
+        }
+
+        /* --- Hero Section --- */
+        .row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .header .row {
+            margin-top: 50px;
+        }
+
+        .col-2 {
+            flex-basis: 45%;
+            min-width: 300px;
+        }
+
+        .col-2 h1 {
+            font-size: 55px;
+            line-height: 1.2;
+            margin: 25px 0;
+            font-weight: 700;
+            color: white;
+        }
+
+        .col-2 h1 span {
+            color: #ffb7b2;
+        }
+
+        .btn {
+            display: inline-block;
+            background: #ff758c;
+            background: linear-gradient(135deg, #ff7eb3 0%, #ff758c 100%);
+            color: #fff;
+            padding: 12px 35px;
+            margin: 30px 0;
+            border-radius: 50px;
+            font-weight: 600;
+            box-shadow: 0 10px 20px rgba(255, 117, 140, 0.3);
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 25px rgba(255, 117, 140, 0.4);
+        }
+
+        /* --- Form Container --- */
+        .container-fluid {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .form-control {
+            font-size: 16px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            width: 100%;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .upload-preview {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #uploadedImage {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            display: none;
+        }
+
+        /* --- Features Section --- */
+        #features {
+            padding: 80px 0;
+            max-width: 1300px;
+            margin: auto;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 36px;
+            color: #333;
+            margin-bottom: 60px;
+            position: relative;
+        }
+
+        .title::after {
+            content: '';
+            background: #764ba2;
+            width: 80px;
+            height: 4px;
+            border-radius: 5px;
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .cardContainer {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 25px;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            flex-basis: calc(25% - 25px);
+            padding: 30px 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            color: #764ba2;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .card p {
+            font-size: 14px;
+        }
+
+        @media screen and (max-width: 900px) {
+            .card { flex-basis: calc(50% - 25px); }
+            .col-2 { flex-basis: 100%; margin-bottom: 40px; }
+            .header { padding-bottom: 100px; clip-path: none; }
+        }
+        @media screen and (max-width: 600px) {
+            .card { flex-basis: 100%; }
+            .navbar nav ul li { display: block; margin: 10px 0; text-align: center; }
+        }
+
+        /* --- Get Started Section --- */
+        #get-started {
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            padding: 80px 0;
+        }
+
+        .card1Container {
+            max-width: 800px;
+            margin: auto;
+            padding: 0 20px;
+        }
+
+        .card1 {
+            background: white;
+            border-left: 5px solid #667eea;
+            padding: 20px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        
+        .card1:hover {
+            transform: scale(1.02);
+        }
+
+        .card1 p {
+            font-size: 16px;
+            color: #444;
+            margin: 0;
+        }
+
+        .card1 b {
+            color: #667eea;
+            margin-right: 10px;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* --- Footer --- */
+        .footer {
+            background-color: #240b36;
+            color: #a0aec0;
+            text-align: center;
+            padding: 30px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header" id="home">
+        <div class="container">
+            <div class="navbar">
+                <h2 style="color: white; font-weight: 700;">Texti<span style="color:#ffb7b2;">fier</span></h2>
+                <nav>
+                    <ul>
+                        <li><a href="#home">Home</a></li>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#get-started">Get Started</a></li>
+                    </ul>
+                </nav>
+            </div>
+            
+            <div class="row">
+                <div class="col-2">
+                    <h1>Image to <span>Text</span> Converter</h1>
+                    <p>Extract text from JPG, JPEG, BMP, PNG, and many other picture formats effortlessly. This free OCR converter allows you to grab text from images and convert it to plain text with AI-powered accuracy.</p>
+                    <a href="#get-started" class="btn">Explore Now &#8594;</a>
+                </div>
+                
+                <div class="col-2">
+                    <div class='container-fluid'>
+                        <h3 style="margin-bottom: 20px; color: #333; text-align: center;">Upload Your Image</h3>
+                        <form class="form" action="/submitImage/" method="POST" enctype="multipart/form-data">
+                            <div class="upload-preview">
+                                <input class='form-control' type="file" name="ocrImage" id="ocrImage" accept="image/*" onchange='showImage(event)' required>
+                                <img src='' id='uploadedImage' alt='Preview'>
+                                <input class='btn' type="submit" value="Convert to Text" style="width: 100%; margin-top: 10px;"/>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="features">
+        <h2 class="title">Powerful Features</h2>
+        <div class="cardContainer">
+            <div class="card">
+                <i class="fa fa-picture-o" style="font-size: 40px; color: #667eea; margin-bottom: 15px;"></i>
+                <h3>Scan Low-Resolution</h3>
+                <p>Advanced capabilities allow you to scan text from low-quality pictures and accurately extract the entire text in very little time.</p>
+            </div>
+            <div class="card">
+                <i class="fa fa-cogs" style="font-size: 40px; color: #667eea; margin-bottom: 15px;"></i>
+                <h3>AI-Based Extraction</h3>
+                <p>Powered by Tesseract-OCR, our AI-based artificial intelligence smartly extracts text without leaving out essential information.</p>
+            </div>
+            <div class="card">
+                <i class="fa fa-files-o" style="font-size: 40px; color: #667eea; margin-bottom: 15px;"></i>
+                <h3>Multiple Formats</h3>
+                <p>Supports multiple image formats seamlessly including JPG, JPEG, JFIF, BMP, PNG, TIFF, and many more.</p>
+            </div>
+            <div class="card">
+                <i class="fa fa-download" style="font-size: 40px; color: #667eea; margin-bottom: 15px;"></i>
+                <h3>Easy Download</h3>
+                <p>Review the results immediately. Download the text file with a single click or copy the generated text directly to your clipboard.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="get-started">
+        <h2 class="title">Getting Started</h2>
+        <p style="text-align: center; margin-bottom: 40px;">Follow these simple steps to convert your images.</p>
+        
+        <div class="card1Container">
+            <div class="card1">
+                <p><b>01.</b> Upload an image from your device using the secure form above.</p>
+            </div>
+            <div class="card1">
+                <p><b>02.</b> Preview the uploaded image and click the "Convert to Text" button to initiate the OCR process.</p>
+            </div>
+            <div class="card1">
+                <p><b>03.</b> Review the perfectly extracted text generated by our AI.</p>
+            </div>
+            <div class="card1">
+                <p><b>04.</b> Copy it to your clipboard or save the text file to your device.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Copyright &copy; 2026 Ayush Shriwas | Powered by Textifier | All Rights Reserved</p>
+    </div>
+
+    <script type="text/javascript" charset="utf-8">
+        function showImage(event) {
+            const imageElement = document.getElementById('uploadedImage');
+            imageElement.src = URL.createObjectURL(event.target.files[0]);
+            imageElement.style.display = 'block'; 
+        }
+    </script>
+</body>
+</html>

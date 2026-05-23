@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Textifier | Extraction Result</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        a {
+            text-decoration: none;
+            color: white;
+        }
+
+        /* --- Header & Navigation --- */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0 40px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: auto;
+        }
+
+        .navbar {
+            display: flex;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        nav {
+            flex: 1;
+            text-align: right;
+        }
+
+        nav ul {
+            display: inline-block;
+            list-style-type: none;
+        }
+
+        nav ul li {
+            display: inline-block;
+            margin-left: 30px;
+        }
+
+        nav a {
+            font-size: 16px;
+            font-weight: 500;
+            position: relative;
+            transition: color 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #ffb7b2;       
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            transform: scaleX(0);
+            height: 2px;
+            bottom: -5px;
+            left: 0;
+            background-color: #ffb7b2;
+            transform-origin: bottom right;
+            transition: transform 0.3s ease-out;
+        }
+
+        nav a:hover::after {
+            transform: scaleX(1);
+            transform-origin: left;
+        }
+
+        /* --- Main Content & Result Area --- */
+        .main-content {
+            flex: 1;
+            padding: 50px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .main-content h1 {
+            color: #764ba2;
+            margin-bottom: 30px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .result-box {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        textarea {
+            width: 100%;
+            max-width: 100%;
+            padding: 20px;
+            font-size: 16px;
+            font-family: 'Poppins', sans-serif;
+            color: #444;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            resize: vertical;
+            background-color: #fafafa;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            border-color: #667eea;
+        }
+
+        /* --- Buttons --- */
+        .button-group {
+            margin-top: 25px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff7eb3 0%, #ff758c 100%);
+            color: #fff;
+            padding: 12px 35px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 8px 15px rgba(255, 117, 140, 0.3);
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 20px rgba(255, 117, 140, 0.4);
+        }
+
+        /* --- Footer --- */
+        .footer {
+            background-color: #240b36;
+            color: #a0aec0;
+            text-align: center;
+            padding: 25px 0;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        @media screen and (max-width: 600px) {
+            .navbar nav ul li { display: block; margin: 10px 0; text-align: center; }
+            nav { text-align: center; }
+            .navbar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header" id="home">
+        <div class="container">
+            <div class="navbar">
+                <h2 style="color: white; font-weight: 700;">Texti<span style="color:#ffb7b2;">fier</span></h2>
+                <nav>
+                    <ul>
+                        <li><a href="/">Home</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <h1>Extracted Text Result</h1>
+        
+        <div class="result-box">
+            <textarea id='textValue' readonly name="result" rows="12">{{ text }}</textarea>
+            
+            <div class="button-group">
+                <button type="button" class='btn' onclick='myFunction()'>
+                    <i class="fa fa-clone"></i> Copy Text
+                </button>
+                <button type="button" class='btn' onclick='downloadText()'>
+                    <i class="fa fa-download"></i> Download File
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Copyright &copy; 2026 Ayush Shriwas | Powered by Textifier | All Rights Reserved</p>
+    </div>
+
+    <script type="text/javascript" charset="utf-8">
+        function downloadText() {
+            var text = document.getElementById('textValue').value;
+            var val = "data:text/plain;charset=utf-8," + encodeURIComponent(text);
+            var a = document.createElement('a');
+            a.href = val;
+            a.download = 'extracted_text.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function myFunction() {
+            var copyText = document.getElementById('textValue');
+            
+            // Select the text field
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); // For mobile devices
+            
+            // Copy the text inside the text field
+            navigator.clipboard.writeText(copyText.value)
+                .then(() => {
+                    alert("Text copied to clipboard!");
+                })
+                .catch(err => {
+                    console.error('Failed to copy text: ', err);
+                });
+        }
+    </script>
+</body>
+</html>
