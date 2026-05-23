@@ -1,4 +1,4 @@
-# Project is in development Phase as there are some changes which I am trying to apply You will get to see the Updated version very soon! Thank you for visiting
+#### Project is in development Phase as there are some changes which I am trying to apply You will get to see the Updated version very soon! Thank you for visiting
 
 ## Technologies Used
 
@@ -29,7 +29,7 @@ Install the above required packages using:
 ```bash
 pip install -r requirements.txt
 ```
-### Deployment
+### Deployment Method 1
 
 To deploy this project run:
 
@@ -41,7 +41,19 @@ Open your browser and browse to the following address:
 ```bash
 http://localhost:8000/
 ```
+### Deployment Method 2
 
+You can use docker image:
+
+```bash
+docker pull ayush5626/textifier-app
+docker run -p 8000:8000 ayush5626/textifier-app
+```
+Open your browser and browse to the following address:
+
+```bash
+http://localhost:8000/
+```
 ### Working 
 
 The project's workflow is a fully automated, end-to-end system for Optical Character Recognition (OCR), designed to be scalable and resilient on AWS. It combines a user-facing web application with a complex, event-driven backend process, all managed by robust DevOps practices.
